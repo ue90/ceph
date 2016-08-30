@@ -826,6 +826,11 @@ EOF
         jq '.' $dir/json > save1.json
     fi
 
+    if which jsonschema > /dev/null;
+    then
+      jsonschema -i $dir/json $CEPH_ROOT/doc/rados/command/list-inconsistent-obj.json || return 1
+    fi
+
     # Compute an old omap digest and save oi
     CEPH_ARGS='' ceph daemon $dir//ceph-osd.0.asok \
         config set osd_deep_scrub_update_digest_min_age 0
@@ -1462,6 +1467,10 @@ EOF
         jq '.' $dir/json > save2.json
     fi
 
+    if which jsonschema > /dev/null;
+    then
+      jsonschema -i $dir/json $CEPH_ROOT/doc/rados/command/list-inconsistent-obj.json || return 1
+    fi
 
     rados rmpool $poolname $poolname --yes-i-really-really-mean-it
     teardown $dir || return 1
@@ -1793,6 +1802,11 @@ EOF
         jq '.' $dir/json > save3.json
     fi
 
+    if which jsonschema > /dev/null;
+    then
+      jsonschema -i $dir/json $CEPH_ROOT/doc/rados/command/list-inconsistent-obj.json || return 1
+    fi
+
     pg_deep_scrub $pg
 
     rados list-inconsistent-pg $poolname > $dir/json || return 1
@@ -2107,6 +2121,11 @@ EOF
     if test $getjson = "yes"
     then
         jq '.' $dir/json > save4.json
+    fi
+
+    if which jsonschema > /dev/null;
+    then
+      jsonschema -i $dir/json $CEPH_ROOT/doc/rados/command/list-inconsistent-obj.json || return 1
     fi
 
     rados rmpool $poolname $poolname --yes-i-really-really-mean-it
