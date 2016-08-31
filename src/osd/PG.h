@@ -22,6 +22,7 @@
 #include <boost/statechart/state_machine.hpp>
 #include <boost/statechart/transition.hpp>
 #include <boost/statechart/event_base.hpp>
+#include <boost/statechart/deferral.hpp>
 #include <boost/scoped_ptr.hpp>
 #include "include/memory.h"
 
@@ -1612,17 +1613,26 @@ public:
 	> reactions;
 
       boost::statechart::result react(const Load&);
-      boost::statechart::result react(const MNotifyRec&);
-      boost::statechart::result react(const MInfoRec&);
-      boost::statechart::result react(const MLogRec&);
       boost::statechart::result react(const boost::statechart::event_base&) {
 	return discard_event();
       }
     };
 
+  public:
+    struct PrimaryInfo : boost::statechart::event< PrimaryInfo > {
+      map<pg_shard_t, pg_info_t>    peer_info;
+      map<pg_shard_t, pg_missing_t> peer_missing;
+      PrimaryInfo(
+          map<pg_shard_t, pg_info_t>    peer_info,
+          map<pg_shard_t, pg_missing_t> peer_missing):
+        peer_info(peer_info), peer_missing(peer_missing) {}
+    };
+  private:
+
     struct Reset : boost::statechart::state< Reset, RecoveryMachine >, NamedState {
       explicit Reset(my_context ctx);
       void exit();
+      boost::optional<PrimaryInfo> saved_primary_info;
 
       typedef boost::mpl::list <
 	boost::statechart::custom_reaction< QueryState >,
@@ -1681,7 +1691,8 @@ public:
 
       typedef boost::mpl::list <
 	boost::statechart::transition< MakePrimary, Primary >,
-	boost::statechart::transition< MakeStray, Stray >
+	boost::statechart::transition< MakeStray, Stray >,
+	boost::statechart::deferral< PrimaryInfo >
 	> reactions;
     };
 
@@ -1739,10 +1750,12 @@ public:
       typedef boost::mpl::list <
 	boost::statechart::custom_reaction< QueryState >,
 	boost::statechart::transition< Activate, Active >,
-	boost::statechart::custom_reaction< AdvMap >
+	boost::statechart::custom_reaction< AdvMap >,
+	boost::statechart::custom_reaction< PrimaryInfo >
 	> reactions;
       boost::statechart::result react(const QueryState& q);
       boost::statechart::result react(const AdvMap &advmap);
+      boost::statechart::result react(const PrimaryInfo& primaryinfo);
     };
 
     struct WaitLocalRecoveryReserved;
@@ -2299,7 +2312,8 @@ public:
     const OSDMapRef lastmap,
     const vector<int>& newup, int up_primary,
     const vector<int>& newacting, int acting_primary,
-    ObjectStore::Transaction *t);
+    ObjectStore::Transaction *t,
+    boost::optional<RecoveryState::PrimaryInfo> *saved_primary_info);
   void on_new_interval();
   virtual void _on_new_interval() = 0;
   void start_flush(ObjectStore::Transaction *t,

@@ -4883,7 +4883,8 @@ void PG::start_peering_interval(
   const OSDMapRef lastmap,
   const vector<int>& newup, int new_up_primary,
   const vector<int>& newacting, int new_acting_primary,
-  ObjectStore::Transaction *t)
+  ObjectStore::Transaction *t,
+  boost::optional<RecoveryState::PrimaryInfo> *saved_primary_info)
 {
   const OSDMapRef osdmap = get_osdmap();
 
@@ -4989,6 +4990,15 @@ void PG::start_peering_interval(
 	   << ", features acting " << acting_features
 	   << " upacting " << upacting_features
 	   << dendl;
+
+  // if the primary has not changed save peer_info and peer_missing before they
+  // are clared otherwise clear saved_primary_info
+  if (was_old_primary && is_primary()) {
+    RecoveryState::PrimaryInfo pi(peer_info, peer_missing);
+    *saved_primary_info = std::move(pi);
+  } else {
+    *saved_primary_info = boost::none;
+  }
 
   // deactivate.
   state_clear(PG_STATE_ACTIVE);
@@ -5620,31 +5630,6 @@ boost::statechart::result PG::RecoveryState::Initial::react(const Load& l)
   return transit< Reset >();
 }
 
-boost::statechart::result PG::RecoveryState::Initial::react(const MNotifyRec& notify)
-{
-  PG *pg = context< RecoveryMachine >().pg;
-  pg->proc_replica_info(
-    notify.from, notify.notify.info, notify.notify.epoch_sent);
-  pg->set_last_peering_reset();
-  return transit< Primary >();
-}
-
-boost::statechart::result PG::RecoveryState::Initial::react(const MInfoRec& i)
-{
-  PG *pg = context< RecoveryMachine >().pg;
-  assert(!pg->is_primary());
-  post_event(i);
-  return transit< Stray >();
-}
-
-boost::statechart::result PG::RecoveryState::Initial::react(const MLogRec& i)
-{
-  PG *pg = context< RecoveryMachine >().pg;
-  assert(!pg->is_primary());
-  post_event(i);
-  return transit< Stray >();
-}
-
 void PG::RecoveryState::Initial::exit()
 {
   context< RecoveryMachine >().log_exit(state_name, enter_time);
@@ -5768,7 +5753,8 @@ boost::statechart::result PG::RecoveryState::Reset::react(const AdvMap& advmap)
       advmap.lastmap,
       advmap.newup, advmap.up_primary,
       advmap.newacting, advmap.acting_primary,
-      context< RecoveryMachine >().get_cur_transaction());
+      context< RecoveryMachine >().get_cur_transaction(),
+      &saved_primary_info);
   }
   pg->remove_down_peer_info(advmap.osdmap);
   return discard_event();
@@ -5790,6 +5776,12 @@ boost::statechart::result PG::RecoveryState::Reset::react(const ActMap&)
 
   pg->update_heartbeat_peers();
   pg->take_waiters();
+
+  // Send PrimaryInfo event
+  if (saved_primary_info) {
+    dout(20) << "Sending PrimaryInfo event" << dendl;
+    post_event(saved_primary_info.get());
+  }
 
   return transit< Started >();
 }
@@ -5987,6 +5979,18 @@ boost::statechart::result PG::RecoveryState::Peering::react(const QueryState& q)
 
   q.f->close_section();
   return forward_event();
+}
+
+boost::statechart::result PG::RecoveryState::Peering::react(const PrimaryInfo& primaryinfo)
+{
+  // Repopulate peer_info and peer_missing from PrimaryInfo event
+  dout(10) << "Repopulating peer_{info,missing} from PrimaryInfo event" << dendl;
+  // assert(context< RecoveryMachine >().pg->peer_info.empty()
+  //     && context< RecoveryMachine >().pg->peer_missing.empty());
+  context< RecoveryMachine >().pg->peer_info = primaryinfo.peer_info;
+  context< RecoveryMachine >().pg->peer_missing = primaryinfo.peer_missing;
+
+  return discard_event();
 }
 
 void PG::RecoveryState::Peering::exit()
