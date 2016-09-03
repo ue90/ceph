@@ -5780,7 +5780,16 @@ boost::statechart::result PG::RecoveryState::Reset::react(const ActMap&)
   // Send PrimaryInfo event
   if (saved_primary_info) {
     dout(20) << "Sending PrimaryInfo event" << dendl;
-    post_event(saved_primary_info.get());
+    PrimaryInfo pi = saved_primary_info.get();
+    string msg;
+    if (pi.peer_info.empty()) {
+      dout(20) << "peer_info empty" << dendl;
+    }
+    if (pi.peer_missing.empty()) {
+      dout(20) << "peer_missing empty" << dendl;
+    }
+
+    post_event(pi);
   }
 
   return transit< Started >();
@@ -7128,6 +7137,7 @@ PG::RecoveryState::GetInfo::GetInfo(my_context ctx)
 
 void PG::RecoveryState::GetInfo::get_infos()
 {
+  dout(20) << "In get_infos()" << dendl;
   PG *pg = context< RecoveryMachine >().pg;
   unique_ptr<PriorSet> &prior_set = context< Peering >().prior_set;
 
