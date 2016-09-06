@@ -5779,17 +5779,12 @@ boost::statechart::result PG::RecoveryState::Reset::react(const ActMap&)
 
   // Send PrimaryInfo event
   if (saved_primary_info) {
-    dout(20) << "Sending PrimaryInfo event" << dendl;
     PrimaryInfo pi = saved_primary_info.get();
-    string msg;
-    if (pi.peer_info.empty()) {
-      dout(20) << "peer_info empty" << dendl;
-    }
-    if (pi.peer_missing.empty()) {
-      dout(20) << "peer_missing empty" << dendl;
-    }
+    if (!(pi.peer_info.empty() && pi.peer_missing.empty())) {
+      dout(20) << "Sending PrimaryInfo event" << dendl;
 
-    post_event(pi);
+      post_event(pi);
+    }
   }
 
   return transit< Started >();
