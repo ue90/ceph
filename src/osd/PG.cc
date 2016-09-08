@@ -4886,6 +4886,9 @@ void PG::start_peering_interval(
   ObjectStore::Transaction *t,
   boost::optional<RecoveryState::PrimaryInfo> *saved_primary_info)
 {
+  dout(10) << "start_peering_interval entry peer_info size = " << peer_info.size() << dendl;
+  dout(10) << "start_peering_interval entry peer_missing size = " << peer_missing.size() << dendl;
+
   const OSDMapRef osdmap = get_osdmap();
 
   set_last_peering_reset();
@@ -4993,7 +4996,11 @@ void PG::start_peering_interval(
 
   // if the primary has not changed save peer_info and peer_missing before they
   // are clared otherwise clear saved_primary_info
+  dout(10) << "start_peering_interval test site peer_info size = " << peer_info.size() << dendl;
+  dout(10) << "start_peering_interval test site peer_missing size = " << peer_missing.size() << dendl;
   if (was_old_primary && is_primary()) {
+    dout(10) << "start_peering_interval post test peer_info size = " << peer_info.size() << dendl;
+    dout(10) << "start_peering_interval post test peer_missing size = " << peer_missing.size() << dendl;
     RecoveryState::PrimaryInfo pi(peer_info, peer_missing);
     *saved_primary_info = std::move(pi);
   } else {
