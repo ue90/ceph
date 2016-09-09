@@ -673,13 +673,24 @@ protected:
    * peer_info    -- projected (updates _before_ replicas ack)
    * peer_missing -- committed (updates _after_ replicas ack)
    */
-  
+
+  struct PrimaryInfo : boost::statechart::event< PrimaryInfo > {
+    map<pg_shard_t, pg_info_t>    peer_info;
+    map<pg_shard_t, pg_missing_t> peer_missing;
+    PrimaryInfo(
+        map<pg_shard_t, pg_info_t>    peer_info,
+        map<pg_shard_t, pg_missing_t> peer_missing):
+      peer_info(peer_info), peer_missing(peer_missing) {}
+  };
+
   bool        need_up_thru;
   set<pg_shard_t>    stray_set;   // non-acting osds that have PG data.
   eversion_t  oldest_update; // acting: lowest (valid) last_update in active set
   map<pg_shard_t, pg_info_t>    peer_info;   // info from peers (stray or prior)
   set<pg_shard_t> peer_purged; // peers purged
   map<pg_shard_t, pg_missing_t> peer_missing;
+  // If we can reuse peer_{info,missing} then store them in saved_primary_info
+  boost::optional<PrimaryInfo> saved_primary_info;
   set<pg_shard_t> peer_log_requested;  // logs i've requested (and start stamps)
   set<pg_shard_t> peer_missing_requested;
 
@@ -1618,21 +1629,9 @@ public:
       }
     };
 
-  public:
-    struct PrimaryInfo : boost::statechart::event< PrimaryInfo > {
-      map<pg_shard_t, pg_info_t>    peer_info;
-      map<pg_shard_t, pg_missing_t> peer_missing;
-      PrimaryInfo(
-          map<pg_shard_t, pg_info_t>    peer_info,
-          map<pg_shard_t, pg_missing_t> peer_missing):
-        peer_info(peer_info), peer_missing(peer_missing) {}
-    };
-  private:
-
     struct Reset : boost::statechart::state< Reset, RecoveryMachine >, NamedState {
       explicit Reset(my_context ctx);
       void exit();
-      boost::optional<PrimaryInfo> saved_primary_info;
 
       typedef boost::mpl::list <
 	boost::statechart::custom_reaction< QueryState >,
@@ -1692,7 +1691,7 @@ public:
       typedef boost::mpl::list <
 	boost::statechart::transition< MakePrimary, Primary >,
 	boost::statechart::transition< MakeStray, Stray >,
-	boost::statechart::deferral< PrimaryInfo >
+	boost::statechart::deferral< PrimaryInfo >   // Still needed ???
 	> reactions;
     };
 
@@ -1981,6 +1980,12 @@ public:
     };
 
     struct GetLog;
+    struct GetInfoContinue : boost::statechart::event< GetInfoContinue > {
+      GetInfoContinue() : boost::statechart::event< GetInfoContinue >() {}
+      void print(std::ostream *out) const {
+        *out << "GetInfoContinue";
+      }
+    };
 
     struct GetInfo : boost::statechart::state< GetInfo, Peering >, NamedState {
       set<pg_shard_t> peer_info_requested;
@@ -1990,10 +1995,12 @@ public:
       void get_infos();
 
       typedef boost::mpl::list <
+	boost::statechart::custom_reaction< GetInfoContinue >,
 	boost::statechart::custom_reaction< QueryState >,
 	boost::statechart::transition< GotInfo, GetLog >,
 	boost::statechart::custom_reaction< MNotifyRec >
 	> reactions;
+      boost::statechart::result react(const GetInfoContinue& cont);
       boost::statechart::result react(const QueryState& q);
       boost::statechart::result react(const MNotifyRec& infoevt);
     };
@@ -2312,8 +2319,7 @@ public:
     const OSDMapRef lastmap,
     const vector<int>& newup, int up_primary,
     const vector<int>& newacting, int acting_primary,
-    ObjectStore::Transaction *t,
-    boost::optional<RecoveryState::PrimaryInfo> *saved_primary_info);
+    ObjectStore::Transaction *t);
   void on_new_interval();
   virtual void _on_new_interval() = 0;
   void start_flush(ObjectStore::Transaction *t,

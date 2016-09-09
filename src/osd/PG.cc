@@ -838,19 +838,34 @@ bool PG::adjust_need_up_thru(const OSDMapRef osdmap)
 
 void PG::remove_down_peer_info(const OSDMapRef osdmap)
 {
-  // Remove any downed osds from peer_info
+  // Remove any downed osds from peer_info & saved_primary_info
+  PrimaryInfo* pi = nullptr;
+  if (saved_primary_info) {
+    pi = reinterpret_cast<PrimaryInfo *>(&saved_primary_info.get());
+    dout(10) << "pre remove_down_peer_info peer_info.size = " << pi->peer_info.size() << dendl;
+    dout(10) << "pre remove_down_peer_info peer_missing.size = " << pi->peer_missing.size() << dendl;
+  }
   bool removed = false;
   map<pg_shard_t, pg_info_t>::iterator p = peer_info.begin();
   while (p != peer_info.end()) {
     if (!osdmap->is_up(p->first.osd)) {
       dout(10) << " dropping down osd." << p->first << " info " << p->second << dendl;
       peer_missing.erase(p->first);
+      if (pi && pi->peer_missing.count(p->first)) {
+        pi->peer_missing.erase(p->first);
+        pi->peer_info.erase(p->first);
+      }
       peer_log_requested.erase(p->first);
       peer_missing_requested.erase(p->first);
       peer_info.erase(p++);
       removed = true;
     } else
       ++p;
+  }
+
+  if (saved_primary_info) {
+    dout(10) << "post remove_down_peer_info peer_info.size = " << pi->peer_info.size() << dendl;
+    dout(10) << "post remove_down_peer_info peer_missing.size = " << pi->peer_missing.size() << dendl;
   }
 
   // if we removed anyone, update peers (which include peer_info)
@@ -4883,11 +4898,10 @@ void PG::start_peering_interval(
   const OSDMapRef lastmap,
   const vector<int>& newup, int new_up_primary,
   const vector<int>& newacting, int new_acting_primary,
-  ObjectStore::Transaction *t,
-  boost::optional<RecoveryState::PrimaryInfo> *saved_primary_info)
+  ObjectStore::Transaction *t)
 {
-  dout(10) << "start_peering_interval entry peer_info size = " << peer_info.size() << dendl;
-  dout(10) << "start_peering_interval entry peer_missing size = " << peer_missing.size() << dendl;
+  dout(10) << "start_peering_interval entry peer_info size = " << this->peer_info.size() << dendl;
+  dout(10) << "start_peering_interval entry peer_missing size = " << this->peer_missing.size() << dendl;
 
   const OSDMapRef osdmap = get_osdmap();
 
@@ -4996,15 +5010,21 @@ void PG::start_peering_interval(
 
   // if the primary has not changed save peer_info and peer_missing before they
   // are clared otherwise clear saved_primary_info
-  dout(10) << "start_peering_interval test site peer_info size = " << peer_info.size() << dendl;
-  dout(10) << "start_peering_interval test site peer_missing size = " << peer_missing.size() << dendl;
-  if (was_old_primary && is_primary()) {
-    dout(10) << "start_peering_interval post test peer_info size = " << peer_info.size() << dendl;
-    dout(10) << "start_peering_interval post test peer_missing size = " << peer_missing.size() << dendl;
-    RecoveryState::PrimaryInfo pi(peer_info, peer_missing);
-    *saved_primary_info = std::move(pi);
-  } else {
-    *saved_primary_info = boost::none;
+  //dout(10) << "start_peering_interval test site peer_info size = " << this->peer_info.size() << dendl;
+  //dout(10) << "start_peering_interval test site peer_missing size = " << this->peer_missing.size() << dendl;
+  if (!(was_old_primary && is_primary())) {
+    //dout(10) << "start_peering_interval post test peer_info size = " << this->peer_info.size() << dendl;
+    //dout(10) << "start_peering_interval post test peer_missing size = " << this->peer_missing.size() << dendl;
+    //RecoveryState::PrimaryInfo pi(peer_info, peer_missing);
+    //*saved_primary_info = std::move(pi);
+  //} else {
+    dout(10) << "Erasing saved_primary_info" << dendl;
+  if (saved_primary_info) {
+    PrimaryInfo pi = saved_primary_info.get();
+    dout(10) << "start_peering_interval peer_info.size = " << pi.peer_info.size() << dendl;
+    dout(10) << "start_peering_interval peer_missing.size = " << pi.peer_missing.size() << dendl;
+  }
+    saved_primary_info = boost::none;
   }
 
   // deactivate.
@@ -5760,8 +5780,7 @@ boost::statechart::result PG::RecoveryState::Reset::react(const AdvMap& advmap)
       advmap.lastmap,
       advmap.newup, advmap.up_primary,
       advmap.newacting, advmap.acting_primary,
-      context< RecoveryMachine >().get_cur_transaction(),
-      &saved_primary_info);
+      context< RecoveryMachine >().get_cur_transaction());
   }
   pg->remove_down_peer_info(advmap.osdmap);
   return discard_event();
@@ -5785,10 +5804,12 @@ boost::statechart::result PG::RecoveryState::Reset::react(const ActMap&)
   pg->take_waiters();
 
   // Send PrimaryInfo event
-  if (saved_primary_info) {
-    PrimaryInfo pi = saved_primary_info.get();
+  if (pg->saved_primary_info) {
+    PrimaryInfo pi = pg->saved_primary_info.get();
     if (!(pi.peer_info.empty() && pi.peer_missing.empty())) {
       dout(20) << "Sending PrimaryInfo event" << dendl;
+      dout(10) << "Reset::react(ActMap) peer_info.size = " << pi.peer_info.size() << dendl;
+      dout(10) << "Reset::react(ActMap) peer_missing.size = " << pi.peer_missing.size() << dendl;
 
       post_event(pi);
     }
@@ -5899,6 +5920,13 @@ void PG::RecoveryState::Primary::exit()
   pg->want_acting.clear();
   utime_t dur = ceph_clock_now(pg->cct) - enter_time;
   pg->osd->recoverystate_perf->tinc(rs_primary_latency, dur);
+
+  // Save peer_info and peer_missing before clearing in case we can reuse them
+  // in the next interval
+
+  dout(10) << "Primary::exit Saving PrimaryInfo peer_info.size = " << pg->peer_info.size() << dendl;
+  dout(10) << "Primary::exit Saving PrimaryInfo peer_missing.size = " << pg->peer_missing.size() << dendl;
+  pg->saved_primary_info = PG::PrimaryInfo(pg->peer_info, pg->peer_missing);
   pg->clear_primary_state();
   pg->state_clear(PG_STATE_CREATING);
 }
@@ -5996,6 +6024,8 @@ boost::statechart::result PG::RecoveryState::Peering::react(const PrimaryInfo& p
 {
   // Repopulate peer_info and peer_missing from PrimaryInfo event
   dout(10) << "Repopulating peer_{info,missing} from PrimaryInfo event" << dendl;
+  dout(10) << "Peering::react(PrimaryInfo) peer_info.size = " << primaryinfo.peer_info.size() << dendl;
+  dout(10) << "Peering::react(PrimaryInfo) peer_missing.size = " << primaryinfo.peer_missing.size() << dendl;
   // assert(context< RecoveryMachine >().pg->peer_info.empty()
   //     && context< RecoveryMachine >().pg->peer_missing.empty());
   context< RecoveryMachine >().pg->peer_info = primaryinfo.peer_info;
@@ -7131,10 +7161,7 @@ PG::RecoveryState::GetInfo::GetInfo(my_context ctx)
     pg->build_prior(prior_set);
 
   pg->reset_min_peer_features();
-  get_infos();
-  if (peer_info_requested.empty() && !prior_set->pg_down) {
-    post_event(GotInfo());
-  }
+  post_event(GetInfoContinue());
 }
 
 void PG::RecoveryState::GetInfo::get_infos()
@@ -7173,6 +7200,17 @@ void PG::RecoveryState::GetInfo::get_infos()
   }
 
   pg->publish_stats_to_osd();
+}
+
+boost::statechart::result PG::RecoveryState::GetInfo::react(const GetInfoContinue& cont)
+{
+  unique_ptr<PriorSet> &prior_set = context< Peering >().prior_set;
+  get_infos();
+  if (peer_info_requested.empty() && !prior_set->pg_down) {
+    post_event(GotInfo());
+  }
+
+  return discard_event();
 }
 
 boost::statechart::result PG::RecoveryState::GetInfo::react(const MNotifyRec& infoevt) 
