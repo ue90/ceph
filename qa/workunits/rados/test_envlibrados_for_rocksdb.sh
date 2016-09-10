@@ -89,7 +89,7 @@ echo "Run EnvLibrados test"
 # run test
 if [ -f "../ceph/src/ceph.conf" ]
 	then
-	./env_librados_test
+	gdb --eval-command=run --eval-command=quit ./env_librados_test
 else
 	echo "../ceph/src/ceph.conf doesn't exist"
 fi
