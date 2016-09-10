@@ -40,19 +40,20 @@ CURRENT_PATH=`pwd`
 # for rocksdb
 case $(lsb_release -si) in
 	Ubuntu|Debian|Devuan)
-		install g++-4.7 libgflags-dev libsnappy-dev zlib1g-dev libbz2-dev librados-dev
+			install g++-4.7 libgflags-dev libsnappy-dev zlib1g-dev libbz2-dev librados-dev
+			apt-cache policy librados-dev librados2
 		;;
 	CentOS|Fedora|RedHatEnterpriseServer)
-		install gcc-c++.x86_64 gflags-devel snappy-devel zlib zlib-devel bzip2 bzip2-devel librados2-devel.x86_64
+			install gcc-c++.x86_64 gflags-devel snappy-devel zlib zlib-devel bzip2 bzip2-devel librados2-devel.x86_64
 		;;
 	*)
-        echo "$(lsb_release -si) is unknown, $@ will have to be installed manually."
+      echo "$(lsb_release -si) is unknown, $@ will have to be installed manually."
         ;;
 esac
 
 # # gflags
 # sudo yum install gflags-devel
-# 
+#
 # wget https://github.com/schuhschuh/gflags/archive/master.zip
 # unzip master.zip
 # cd gflags-master
@@ -80,7 +81,7 @@ if [ -f "/etc/ceph/ceph.conf" ]; then
     cp /etc/ceph/ceph.conf ../ceph/src/
 elif [ -f "/etc/ceph/ceph/ceph.conf" ]; then
 	cp /etc/ceph/ceph/ceph.conf ../ceph/src/
-else 
+else
 	echo "/etc/ceph/ceph/ceph.conf doesn't exist"
 fi
 
@@ -89,7 +90,7 @@ echo "Run EnvLibrados test"
 if [ -f "../ceph/src/ceph.conf" ]
 	then
 	./env_librados_test
-else 
+else
 	echo "../ceph/src/ceph.conf doesn't exist"
 fi
 cd ${CURRENT_PATH}
