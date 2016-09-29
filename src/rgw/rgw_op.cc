@@ -2662,6 +2662,7 @@ int RGWPutObjProcessor_Multipart::do_complete(string& etag, real_time *mtime, re
   info.num = atoi(part_num.c_str());
   info.etag = etag;
   info.size = s->obj_size;
+  info.accounted_size = s->obj_size; // TODO
   info.modified = real_clock::now();
   info.manifest = manifest;
 
@@ -4687,6 +4688,7 @@ void RGWCompleteMultipart::execute()
   bool truncated;
   RGWCompressionInfo cs_info;
   bool compressed = false;
+  uint64_t accounted_size = 0;
 
   uint64_t min_part_size = s->cct->_conf->rgw_multipart_min_part_size;
 
@@ -4725,7 +4727,7 @@ void RGWCompleteMultipart::execute()
     }
 
     for (obj_iter = obj_parts.begin(); iter != parts->parts.end() && obj_iter != obj_parts.end(); ++iter, ++obj_iter, ++handled_parts) {
-      uint64_t part_size = obj_iter->second.size;
+      uint64_t part_size = obj_iter->second.accounted_size;
       if (handled_parts < (int)parts->parts.size() - 1 &&
           part_size < min_part_size) {
         op_ret = -ERR_TOO_SMALL;
@@ -4800,6 +4802,7 @@ void RGWCompleteMultipart::execute()
       remove_objs.push_back(remove_key);
 
       ofs += obj_part.size;
+      accounted_size += obj_part.accounted_size;
     }
   } while (truncated);
   hash.Final((byte *)final_etag);
@@ -4899,7 +4902,6 @@ void RGWAbortMultipart::execute()
 
   cls_rgw_obj_chain chain;
   list<rgw_obj_key> remove_objs;
-  uint64_t deleted_size = 0;
 
   do {
     op_ret = list_multipart_parts(store, s, upload_id, meta_oid, max_parts,
@@ -4929,24 +4931,6 @@ void RGWAbortMultipart::execute()
           remove_objs.push_back(key);
         }
       }
-        map<string, bufferlist> attrset;
-        int y = get_obj_attrs(store, s, obj, attrset);
-        map<string, bufferlist>::iterator cmp = attrset.find(RGW_ATTR_COMPRESSION);
-        if (!y && cmp != attrset.end()) {
-          RGWCompressionInfo cs_info;
-          bufferlist::iterator bliter = cmp->second.begin();
-          try {
-            ::decode(cs_info, bliter);
-            if (cs_info.compression_type != "none")
-              deleted_size += cs_info.orig_size;
-            else
-              deleted_size += obj_part.size;
-          } catch (buffer::error& err) {
-            ldout(s->cct, 5) << "Failed to get decompressed obj size" << dendl;
-            deleted_size += obj_part.size;
-          }
-        } else
-          deleted_size += obj_part.size;
     }
   } while (truncated);
 
