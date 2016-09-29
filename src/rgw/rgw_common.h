@@ -1116,6 +1116,7 @@ struct RGWStorageStats
   RGWObjCategory category;
   uint64_t size;
   uint64_t size_rounded;
+  uint64_t size_utilized{0}; //< size after compression, encryption
   uint64_t num_objects;
 
   RGWStorageStats()
