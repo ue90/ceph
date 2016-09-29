@@ -8912,6 +8912,7 @@ int RGWRados::Bucket::UpdateIndex::complete(int64_t poolid, uint64_t epoch, uint
   RGWObjEnt ent;
   obj.get_index_key(&ent.key);
   ent.size = size;
+  ent.accounted_size = size;
   ent.mtime = ut;
   ent.etag = etag;
   ACLOwner owner;
@@ -11388,7 +11389,7 @@ int RGWRados::cls_obj_complete_op(BucketShard& bs, RGWModifyOp op, string& tag,
   ObjectWriteOperation o;
   rgw_bucket_dir_entry_meta dir_meta;
   dir_meta.size = ent.size;
-  dir_meta.accounted_size = ent.size;
+  dir_meta.accounted_size = ent.accounted_size;
   dir_meta.mtime = ent.mtime;
   dir_meta.etag = ent.etag;
   dir_meta.owner = ent.owner.to_str();
@@ -11506,6 +11507,7 @@ int RGWRados::cls_bucket_list(rgw_bucket& bucket, int shard_id, rgw_obj_key& sta
     RGWObjEnt e;
     e.key.set(dirent.key.name, dirent.key.instance);
     e.size = dirent.meta.size;
+    e.accounted_size = dirent.meta.accounted_size;
     e.mtime = dirent.meta.mtime;
     e.etag = dirent.meta.etag;
     e.owner = dirent.meta.owner;
@@ -11709,6 +11711,7 @@ int RGWRados::check_disk_state(librados::IoCtx io_ctx,
   ACLOwner owner;
 
   object.size = astate->size;
+  object.accounted_size = astate->accounted_size;
   object.mtime = astate->mtime;
 
   map<string, bufferlist>::iterator iter = astate->attrset.find(RGW_ATTR_ETAG);
@@ -11752,6 +11755,7 @@ int RGWRados::check_disk_state(librados::IoCtx io_ctx,
   list_state.ver.pool = io_ctx.get_id();
   list_state.ver.epoch = astate->epoch;
   list_state.meta.size = object.size;
+  list_state.meta.accounted_size = object.accounted_size;
   list_state.meta.mtime = object.mtime;
   list_state.meta.category = main_category;
   list_state.meta.etag = etag;
