@@ -1234,7 +1234,8 @@ void OSDMonitor::encode_pending(MonitorDBStore::TransactionRef t)
     }
     if (!tmp.test_flag(CEPH_OSDMAP_REQUIRE_KRAKEN)) {
       dout(10) << __func__ << " encoding without feature SERVER_KRAKEN" << dendl;
-      features &= ~CEPH_FEATURE_SERVER_KRAKEN;
+      features &= ~(CEPH_FEATURE_SERVER_KRAKEN |
+		    CEPH_FEATURE_MSG_ADDR2);
     }
     dout(10) << __func__ << " encoding full map with " << features << dendl;
 
