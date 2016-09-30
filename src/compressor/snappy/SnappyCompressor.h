@@ -76,18 +76,15 @@ class SnappyCompressor : public Compressor {
   int decompress(bufferlist::iterator &p,
 		 size_t compressed_len,
 		 bufferlist &dst) override {
-    size_t res_len = 0;
-    // Trick, decompress only need first 32bits buffer
-    bufferlist::const_iterator ptmp = p;
-    bufferlist tmp;
-    ptmp.copy(4, tmp);
-    if (!snappy::GetUncompressedLength(tmp.c_str(), tmp.length(), &res_len)) {
+    snappy::uint32 res_len = 0;
+    BufferlistSource source_1(p, compressed_len);
+    if (!snappy::GetUncompressedLength(&source_1, &res_len)) {
       return -1;
     }
-    BufferlistSource source(p, compressed_len);
+    BufferlistSource source_2(p, compressed_len);
     bufferptr ptr(res_len);
-    if (snappy::RawUncompress(&source, ptr.c_str())) {
-      p = source.get_pos();
+    if (snappy::RawUncompress(&source_2, ptr.c_str())) {
+      p = source_2.get_pos();
       dst.append(ptr);
       return 0;
     }
