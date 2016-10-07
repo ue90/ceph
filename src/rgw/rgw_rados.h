@@ -2662,6 +2662,7 @@ public:
                void *progress_data);
 
   int copy_obj_data(RGWObjectCtx& obj_ctx,
+               RGWObjState *astate,
                RGWBucketInfo& dest_bucket_info,
 	       RGWRados::Object::Read& read_op, off_t end,
                rgw_obj& dest_obj,

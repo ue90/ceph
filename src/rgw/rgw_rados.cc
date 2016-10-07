@@ -7105,7 +7105,7 @@ int RGWRados::copy_obj(RGWObjectCtx& obj_ctx,
   }
 
   if (copy_data) { /* refcounting tail wouldn't work here, just copy the data */
-    return copy_obj_data(obj_ctx, dest_bucket_info, read_op, obj_size - 1, dest_obj, src_obj,
+    return copy_obj_data(obj_ctx, astate, dest_bucket_info, read_op, obj_size - 1, dest_obj, src_obj,
                          max_chunk_size, mtime, real_time(), attrs, category, olh_epoch, delete_at,
                          version_id, ptag, petag, err);
   }
@@ -7233,6 +7233,7 @@ done_ret:
 
 
 int RGWRados::copy_obj_data(RGWObjectCtx& obj_ctx,
+               RGWObjState *astate,
                RGWBucketInfo& dest_bucket_info,
 	       RGWRados::Object::Read& read_op, off_t end,
                rgw_obj& dest_obj,
@@ -7301,10 +7302,8 @@ int RGWRados::copy_obj_data(RGWObjectCtx& obj_ctx,
     }
   }
 
-  // XXX: need to copy over compression attr and its orig_size here?
-  ret = processor.complete(ofs, etag, mtime, set_mtime, attrs, delete_at);
-
-  return ret;
+  return processor.complete(astate->accounted_size, etag,
+                            mtime, set_mtime, attrs, delete_at);
 }
 
 bool RGWRados::is_meta_master()
