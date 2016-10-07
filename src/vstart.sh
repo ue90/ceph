@@ -503,8 +503,10 @@ if [ "$start_mon" -eq 1 ]; then
         rgw frontends = fastcgi, civetweb port=$CEPH_RGW_PORT
         rgw dns name = localhost
         filestore fd cache size = 32
+	rgw md log max shards = 4
+	rgw data log num shards = 4
+	rgw sync log trim interval = 10
         run dir = $CEPH_OUT_DIR
-        enable experimental unrecoverable data corrupting features = *
 EOF
 		if [ "$lockdep" -eq 1 ] ; then
 			wconf <<EOF

@@ -6554,7 +6554,7 @@ static void set_copy_attrs(map<string, bufferlist>& src_attrs,
     break;
   }
 }
-
+#if 0
 int RGWRados::rewrite_obj(RGWBucketInfo& dest_bucket_info, rgw_obj& obj)
 {
   map<string, bufferlist> attrset;
@@ -6589,7 +6589,7 @@ int RGWRados::rewrite_obj(RGWBucketInfo& dest_bucket_info, rgw_obj& obj)
   return copy_obj_data(rctx, dest_bucket_info, read_op, obj_size - 1, obj, obj, max_chunk_size, NULL, mtime, attrset,
                        RGW_OBJ_CATEGORY_MAIN, 0, real_time(), NULL, NULL, NULL, NULL);
 }
-
+#endif
 struct obj_time_weight {
   real_time mtime;
   uint32_t zone_short_id;
