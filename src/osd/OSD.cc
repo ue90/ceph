@@ -128,6 +128,7 @@
 #include "osd/OpRequest.h"
 
 #include "auth/AuthAuthorizeHandler.h"
+#include "auth/RotatingKeyRing.h"
 #include "common/errno.h"
 
 #include "objclass/objclass.h"
