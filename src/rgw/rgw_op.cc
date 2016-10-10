@@ -725,6 +725,15 @@ int RGWGetObj::read_user_manifest_part(rgw_bucket& bucket, RGWObjEnt& ent, RGWAc
     off_t len = bl.length();
     cur_ofs += len;
     ofs += len;
+    if (!len) {
+	/* if we didn't read anything this had better be a 0 len object,
+	 * which can apparently result from how the object was populated.
+	 * otherwise, it's unexpected and nothing good happens by ignoring it.
+	 * (BZ #1380196)
+	 */
+	assert (cur_ofs == cur_end);
+	break;
+    }
     ret = 0;
     perfcounter->tinc(l_rgw_get_lat,
                       (ceph_clock_now(s->cct) - start_time));
